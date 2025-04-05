@@ -439,6 +439,10 @@ class FinetuningArguments(
         default=False,
         metadata={"help": "Whether or not to compute effective tokens per second."},
     )
+    disco: bool = field(
+        default=False,
+        metadata={"help": "Whether to use DiscoRM loss and the corresponding model architecture."},
+    )
 
     def __post_init__(self):
         def split_arg(arg):

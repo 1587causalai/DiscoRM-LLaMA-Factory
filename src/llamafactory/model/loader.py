@@ -37,6 +37,7 @@ from .model_utils.mod import convert_pretrained_model_to_mod, load_mod_pretraine
 from .model_utils.unsloth import load_unsloth_pretrained_model
 from .model_utils.valuehead import load_valuehead_params
 from .patcher import patch_config, patch_model, patch_processor, patch_tokenizer, patch_valuehead_model
+from .model_utils.discohead import AutoModelForCausalLMWithNormalHead
 
 
 if TYPE_CHECKING:
@@ -120,6 +121,7 @@ def load_model(
     finetuning_args: "FinetuningArguments",
     is_trainable: bool = False,
     add_valuehead: bool = False,
+    is_disco: bool = False,
 ) -> "PreTrainedModel":
     r"""Load pretrained model."""
     init_kwargs = _get_init_kwargs(model_args)
@@ -170,7 +172,11 @@ def load_model(
     model = init_adapter(config, model, model_args, finetuning_args, is_trainable)
 
     if add_valuehead:
-        model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
+        if is_disco:
+            model = AutoModelForCausalLMWithNormalHead.from_pretrained(model)
+        else:
+            model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
+        
         patch_valuehead_model(model)
 
         if model_args.adapter_name_or_path is not None:

@@ -33,7 +33,8 @@ logger = logging.get_logger(__name__)
 def load_valuehead_params(path_or_repo_id: str, model_args: "ModelArguments") -> dict[str, torch.Tensor]:
     r"""Load value head parameters from Hugging Face Hub or local disk.
 
-    Returns: dict with keys `v_head.summary.weight` and `v_head.summary.bias`.
+    For regular value head models, returns a dict with keys `v_head.summary.weight` and `v_head.summary.bias`.
+    For Disco reward models (with normal distribution head), it also loads parameters for the variance head.
     """
     kwargs = {"path_or_repo_id": path_or_repo_id, "cache_dir": model_args.cache_dir, "token": model_args.hf_hub_token}
     err_text = ""

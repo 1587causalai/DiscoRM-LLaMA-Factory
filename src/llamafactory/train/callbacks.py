@@ -19,7 +19,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 import torch
 import transformers
@@ -46,6 +46,8 @@ if is_safetensors_available():
 if TYPE_CHECKING:
     from transformers import TrainerControl, TrainerState, TrainingArguments
     from trl import AutoModelForCausalLMWithValueHead
+    from ..model.model_utils.discohead import AutoModelForCausalLMWithNormalHead
+    ValueHeadModelType = Union["AutoModelForCausalLMWithValueHead", "AutoModelForCausalLMWithNormalHead"]
 
     from ..hparams import DataArguments, FinetuningArguments, GeneratingArguments, ModelArguments
 
@@ -54,9 +56,11 @@ logger = logging.get_logger(__name__)
 
 
 def fix_valuehead_checkpoint(
-    model: "AutoModelForCausalLMWithValueHead", output_dir: str, safe_serialization: bool
+    model: "ValueHeadModelType",
+    output_dir: str,
+    safe_serialization: bool
 ) -> None:
-    r"""Fix the valuehead checkpoint files.
+    r"""Fix the checkpoint files for ValueHead and NormalHead models.
 
     The model is already unwrapped.
 
@@ -79,10 +83,12 @@ def fix_valuehead_checkpoint(
         state_dict: dict[str, torch.Tensor] = torch.load(path_to_checkpoint, map_location="cpu")
 
     os.remove(path_to_checkpoint)
-    decoder_state_dict, v_head_state_dict = {}, {}
+    decoder_state_dict, head_state_dict = {}, {}
     for name, param in state_dict.items():
         if name.startswith("v_head."):
-            v_head_state_dict[name] = param
+            head_state_dict[name] = param
+        elif name.startswith("var_head."):
+            head_state_dict[name] = param
         else:
             decoder_state_dict[name.replace("pretrained_model.", "", 1)] = param
 
@@ -90,12 +96,14 @@ def fix_valuehead_checkpoint(
         output_dir, state_dict=decoder_state_dict or None, safe_serialization=safe_serialization
     )
 
-    if safe_serialization:
-        save_file(v_head_state_dict, os.path.join(output_dir, V_HEAD_SAFE_WEIGHTS_NAME), metadata={"format": "pt"})
+    if head_state_dict:
+        if safe_serialization:
+            save_file(head_state_dict, os.path.join(output_dir, V_HEAD_SAFE_WEIGHTS_NAME), metadata={"format": "pt"})
+        else:
+            torch.save(head_state_dict, os.path.join(output_dir, V_HEAD_WEIGHTS_NAME))
+        logger.info_rank0(f"Value/Normal head parameters saved at: {output_dir}")
     else:
-        torch.save(v_head_state_dict, os.path.join(output_dir, V_HEAD_WEIGHTS_NAME))
-
-    logger.info_rank0(f"Value head model saved at: {output_dir}")
+        logger.warning_rank0(f"No Value/Normal head parameters found in checkpoint at: {output_dir}")
 
 
 class FixValueHeadModelCallback(TrainerCallback):
