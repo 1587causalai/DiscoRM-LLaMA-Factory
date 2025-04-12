@@ -2,7 +2,7 @@
 
 **本项目是基于 [hiyouga/LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) 进行修改的版本，主要目的是实现和测试一种新的奖励模型训练方法——DiscoRM。**
 
-**关于 DiscoRM 的核心设计理念、模型结构修改（如 Disco Head）、损失函数（Disco Loss）以及如何在 LLaMA-Factory 中实现和使用的详细信息，请务必查阅本项目根目录下的 `docs/` 目录。**
+**关于 DiscoRM 的核心设计理念、模型结构修改（如 Disco Head）、损失函数（Disco Loss）以及如何在 LLaMA-Factory 中实现和使用的详细信息，请查阅 `docs/` 目录。**
 
 **以下是原始 LLaMA-Factory 的 README 内容，大部分内容仍然适用，但请以 `docs/` 目录中的信息为准来了解 DiscoRM 特定的修改和用法。**
 
