@@ -96,7 +96,7 @@ class PairwiseTrainer(Trainer):
         """
         # 调用模型获取均值和方差
         outputs = model(**inputs, output_hidden_states=True, return_dict=False, use_cache=False)
-        # AutoModelForCausalLMWithNormalHead返回的是(logits, loss, value, variance)
+        # AutoModelForCausalLMWithNormalHead 返回的是(logits, loss, value, variance)
         _, _, values, variances = outputs[:4]
         
         batch_size = inputs["input_ids"].size(0) // 2

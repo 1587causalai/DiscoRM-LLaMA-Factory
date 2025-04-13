@@ -34,7 +34,7 @@ Disco Reward Model (DiscoRM) 旨在解决这个问题。它不直接输出标量
 我们考虑了两种主要方案：
 
 1.  **方案一 (重写，已否决)**: 创建一个全新的类 `NewDiscoModel`，不继承 `WithValueHead`，而是包含一个新的 `NormalHead` 模块，该模块同时输出均值和方差。
-    *   **缺点**: 需要重新实现大量 `WithValueHead` 中已有的逻辑（如 PEFT 集成、`forward` 方法中的通用处理、`state_dict` 管理等），代码冗余，兼容性风险高。
+    *   **缺点**: 需要重新实现大量 `WithValueHead` 中已有的逻辑（如 PEFT 集成、`forward` 方法中的通用处理、`state_dict` 管理等），代码冗余，兼容性风险高。违背了最小改动原则。
 
 2.  **方案二 (继承，已采纳)**: 创建 `AutoModelForCausalLMWithNormalHead` 类，并让它**继承**自 `trl.AutoModelForCausalLMWithValueHead`。
     *   **优点**:
@@ -44,6 +44,13 @@ Disco Reward Model (DiscoRM) 旨在解决这个问题。它不直接输出标量
     *   **实现**:
         *   保留父类继承下来的 `self.v_head` 用于计算**均值 (μ)**。
         *   **新增**一个独立的模块 `VarianceHead` (`self.var_head`)，专门用于计算**方差 (σ²)**。
+    *   **讨论点与权衡**:
+        *   **Token-level 输出**: `v_head` 和 `var_head` 都作用于最后一层每个 token 的隐藏状态，因此输出的均值和方差形状为 `(batch_size, sequence_length)`。这意味着下游任务（如损失函数或推理）需要自行实现**聚合逻辑**，例如，通常取**最后一个有效 token** 对应的均值和方差作为序列级别的分布参数。
+        *   **参数独立性**: 均值头和方差头是两个独立的线性层。这提供了最大的灵活性（例如可以独立初始化），但没有利用两者可能共享的特征表示。
+        *   **备选头部设计 (未采纳)**:
+            *   *单一组合头*: 使用单个线性层输出 2 个值，分别对应均值和（Softplus前的）方差。优点是可能更参数高效，缺点是失去独立控制，且需要更多自定义代码。
+            *   *共享主干头*: 先用共享层处理隐藏状态，再分出两个小头计算均值和方差。优点是可能提升表示能力，缺点是结构更复杂。
+        *   **结论**: 当前方案通过牺牲一定的参数共享可能性，换取了实现的简洁性、灵活性以及对 `trl` 库的最大化复用。
 
 ### 2.3. 方差激活函数选择
 方差必须是非负的。我们考虑了两种激活函数：
@@ -52,6 +59,7 @@ Disco Reward Model (DiscoRM) 旨在解决这个问题。它不直接输出标量
     *   **缺点**: 数值不稳定，容易溢出；梯度可能爆炸。
 2.  **`nn.Softplus` (已采纳)**: 计算 `log(1 + exp(linear_output))`。
     *   **优点**: 数值稳定，梯度平滑，同样能保证输出为正。是更健壮的选择。
+    *   **补充说明**: `nn.Softplus` 有一个 `beta` 参数（默认为 1.0）控制函数的陡峭程度。虽然理论上可调，但在大模型实践中，调整此参数通常被认为是次要的超参数优化。除非遇到特定的数值问题，否则使用默认值是合理的起点，调整学习率和权重初始化等更为关键。
 
 ### 2.4. 与 LlamaFactory 集成点
 1.  **模型加载 (`loader.py`)**: 需要引入一个控制参数 (`is_disco`)，让加载器知道何时应加载我们新的 `NormalHead` 模型，何时加载标准的 `ValueHead` 模型。
@@ -138,23 +146,23 @@ class AutoModelForCausalLMWithNormalHead(AutoModelForCausalLMWithValueHead):
 
 ## 4. 兼容性分析与使用注意事项
 
-*   **`forward` 输出变化 (最重要)**: `NormalHead` 模型的 `forward` 方法比 `ValueHead` 多返回一个 `variance`。任何直接调用 `forward` 并依赖返回值数量/索引的代码（尤其是 **Trainer** 和 **损失函数**）**必须修改**。
+*   **`forward` 输出变化 (最重要)**: `NormalHead` 模型的 `forward` 方法比 `ValueHead` 多返回一个 `variance`。**注意**: 返回的 `value` (μ) 和 `variance` (σ²) 都是 **token-level** 的张量，形状为 `(batch_size, sequence_length)`。任何直接调用 `forward` 并依赖返回值数量/索引的代码（尤其是 **Trainer** 和 **损失函数**）**必须修改**以处理新增的 `variance` 输出，并且需要实现**从 token-level 到 sequence-level 的聚合逻辑**（例如，取最后一个 token 的值）。
 *   **检查点不完全兼容**:
-    *   `NormalHead` 检查点包含 `var_head.`，不能被 `ValueHead` 加载。
-    *   `ValueHead` 检查点可被 `NormalHead` 加载（加载 `v_head`），但 `var_head` 需重新初始化。
+    *   `NormalHead` 检查点包含 `var_head.`，不能被 `ValueHead` 加载（会报 `unexpected keys` 错误）。
+    *   `ValueHead` 检查点可被 `NormalHead` 加载（仅加载 `v_head` 和基础模型权重），但 `var_head` 需要重新随机初始化或从其他来源加载。
 *   **训练流程适配**:
-    *   需要实现 DiscoRM 的损失函数，该函数需要同时使用 `value` (μ) 和 `variance` (σ²)。
-    *   需要修改或创建新的 Trainer 来处理 `forward` 新增的 `variance` 输出，并将 μ 和 σ² 传递给 DiscoRM 损失函数。标准的 `RewardTrainer` 可能不适用。
+    *   需要实现 DiscoRM 的损失函数，该函数需要同时接收**聚合后的** `value` (μ) 和 `variance` (σ²)。
+    *   需要修改或创建新的 Trainer 来处理 `forward` 新增的 `variance` 输出，执行聚合操作，并将聚合后的 μ 和 σ² 传递给 DiscoRM 损失函数。标准的 `RewardTrainer` 不适用。
 
 ## 5. 总结与后续步骤
 
-我们成功设计并实现了 DiscoRM 的基础模型架构 `AutoModelForCausalLMWithNormalHead`，并将其集成到了 LlamaFactory 的模型加载和适配流程中。该实现遵循了最小改动和保持兼容性的原则，为后续工作奠定了基础。
+我们成功设计并实现了 DiscoRM 的基础模型架构 `AutoModelForCausalLMWithNormalHead`，并将其集成到了 LlamaFactory 的模型加载和适配流程中。该实现遵循了最小改动和保持兼容性的原则，巧妙复用了 `trl` 的 `WithValueHead` 结构作为均值头，是一个实用且高效的起点。设计中也认识到 token-level 输出和参数独立性等权衡。
 
 **后续步骤**:
-1.  **实现 DiscoRM 损失函数**: 在 `src/llamafactory/train/discorm/` 或类似路径下创建损失函数模块。
-2.  **适配 Trainer**: 修改或创建新的 Trainer 类，处理 `NormalHead` 模型的输出并调用 DiscoRM 损失。
-3.  **配置与运行**: 更新训练脚本/配置，使用 `is_disco=True` 并指定新的 Trainer 和损失。
+1.  **实现 DiscoRM 损失函数**: 在 `src/llamafactory/train/discorm/loss.py` (建议路径) 中创建损失函数模块，需要处理输入的均值和方差（注意聚合）。
+2.  **适配 Trainer**: 创建新的 `DiscoTrainer` 类 (建议名称)，继承或修改现有 Trainer，使其能正确处理 `NormalHead` 的 token-level 输出，执行聚合，并调用 DiscoRM 损失。
+3.  **配置与运行**: 更新训练脚本/配置文件，使用 `is_disco=True` 并指定新的 Trainer (`discorm`) 和对应的损失函数。
 
 ---
 
-➡️ **下一步**: 查阅 `DiscoRM_损失函数设计与实现.md` (待创建) 
+➡️ **下一步**: 查阅 `
