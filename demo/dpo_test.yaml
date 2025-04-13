@@ -1,0 +1,60 @@
+# DPO 快速测试配置
+# 运行命令:
+# python demo/run_dpo.py --config demo/dpo_test.yaml
+
+### 定制参数
+# use_dynamic_beta: true # 根据需要启用
+disco_pref: false
+
+### model
+model_name_or_path: /root/models/Qwen1.5-0.5B
+trust_remote_code: true
+# ref_model: /root/models/Qwen1.5-0.5B-Chat # 根据需要启用
+# freeze_policy: true  # 根据需要启用
+
+### method
+stage: dpo # 设置为 DPO
+do_train: true
+finetuning_type: lora
+lora_rank: 8
+lora_target: all
+pref_beta: 0.1 # DPO beta 值
+pref_loss: sigmoid  # 使用标准的 sigmoid DPO 损失
+
+### train
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 4
+learning_rate: 1.0e-5 # DPO 通常需要更小的学习率
+num_train_epochs: 0.1 # Reduced for quick test
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true  # 使用bf16精度
+ddp_timeout: 180000000
+resume_from_checkpoint: null
+
+
+### dataset
+dataset: hh_rlhf_en # 选择一个 DPO 数据集
+dataset_dir: data
+template: qwen
+cutoff_len: 512
+max_samples: 100 # Reduced for quick test
+overwrite_cache: true
+preprocessing_num_workers: 1
+dataloader_num_workers: 2
+
+### output
+output_dir: results/qwen15-0.5b/lora/dpo_quick_test # Changed for DPO test
+logging_steps: 1 # Reduced for quick test
+save_steps: 10 # Reduced for quick test
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: false
+report_to: none # Disabled wandb for quick test
+
+### eval
+# eval_dataset: # 如果有 DPO 评估集，在这里指定
+val_size: 0.01 # Reduced for quick test
+per_device_eval_batch_size: 2
+eval_strategy: steps
+eval_steps: 5 # Reduced for quick test 

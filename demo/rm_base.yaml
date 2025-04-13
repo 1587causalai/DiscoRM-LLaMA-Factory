@@ -1,0 +1,51 @@
+# 标准 Reward Model (RM) 训练基础配置
+# 运行命令:
+# python demo/run_rm.py --config demo/rm_base.yaml --wandb_project rm_base_project_debug
+
+### model
+model_name_or_path: /root/models/Qwen1.5-0.5B # 使用本地 Qwen 模型
+trust_remote_code: true
+
+### method
+stage: rm # 训练阶段为 Reward Modeling
+do_train: true
+finetuning_type: lora # 使用 LoRA 微调
+lora_rank: 8
+lora_target: all
+
+### dataset
+dataset: hh_rlhf_en # 使用标准的偏好数据集
+dataset_dir: data # 相对于项目根目录
+template: qwen # 使用 Qwen 模板
+cutoff_len: 512 # 适用于小模型的截断长度
+max_samples: 1000 # 训练样本数
+overwrite_cache: true
+preprocessing_num_workers: 1 # 根据需要调整
+dataloader_num_workers: 2 # 根据需要调整
+
+### output
+output_dir: /root/exps/qwen15-0.5b/lora/rm_base # 输出目录
+logging_steps: 10
+save_steps: 100
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: false
+report_to: [wandb] # 默认不报告给 WandB，可通过命令行覆盖
+
+### train
+per_device_train_batch_size: 2 # 每个设备的批大小
+gradient_accumulation_steps: 4 # 梯度累积步数 (有效批大小 = 2*4=8)
+learning_rate: 1.0e-4 # 学习率
+num_train_epochs: 1.0 # 训练轮数 (基础设置为1轮)
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true # 使用 BF16 混合精度
+ddp_timeout: 180000000
+resume_from_checkpoint: null
+
+### eval (可选，取消注释以启用评估)
+# eval_dataset: hh_rlhf_en # 使用相同数据集进行评估，或指定其他评估集
+val_size: 0.1 # 验证集比例
+per_device_eval_batch_size: 2
+eval_strategy: steps
+eval_steps: 10 # 评估步数 
