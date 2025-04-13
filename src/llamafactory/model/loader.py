@@ -27,7 +27,7 @@ from transformers import (
     AutoTokenizer,
 )
 from trl import AutoModelForCausalLMWithValueHead
-from .model_utils.discohead import AutoModelForCausalLMWithNormalHead
+from .model_utils.xhead import AutoModelForCausalLMWithNormalHead
 
 
 from ..extras import logging

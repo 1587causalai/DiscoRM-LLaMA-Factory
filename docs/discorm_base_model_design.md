@@ -69,7 +69,7 @@ Disco Reward Model (DiscoRM) 旨在解决这个问题。它不直接输出标量
 
 基于上述设计，我们对以下文件进行了修改或创建：
 
-### 3.1. `src/llamafactory/model/model_utils/discohead.py` (新文件)
+### 3.1. `src/llamafactory/model/model_utils/xhead.py` (新文件)
 
 ```python
 import torch
@@ -130,7 +130,7 @@ class AutoModelForCausalLMWithNormalHead(AutoModelForCausalLMWithValueHead):
 *   **`load_model` 函数**:
     *   增加 `is_disco: bool = False` 参数。
     *   在 `if add_valuehead:` 块内，根据 `is_disco` 的值选择加载 `AutoModelForCausalLMWithNormalHead` 或 `AutoModelForCausalLMWithValueHead`。
-*   **导入**: 添加 `from .model_utils.discohead import AutoModelForCausalLMWithNormalHead`。
+*   **导入**: 添加 `from .model_utils.xhead import AutoModelForCausalLMWithNormalHead`。
 
 ### 3.3. `src/llamafactory/model/patcher.py` (修改)
 
